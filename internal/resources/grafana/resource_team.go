@@ -6,6 +6,7 @@ import (
 	"log"
 	"strconv"
 
+	"github.com/go-openapi/swag"
 	goapi "github.com/grafana/grafana-openapi-client-go/client"
 	"github.com/grafana/grafana-openapi-client-go/models"
 	"github.com/grafana/terraform-provider-grafana/internal/common"
@@ -25,6 +26,13 @@ type MemberChange struct {
 }
 
 type ChangeMemberType int8
+
+type RespBodyAddUserToOrg struct {
+	// message
+	Message string `json:"message,omitempty"`
+	// userId
+	UserId string `json:"userId,omitempty"`
+}
 
 const (
 	AddMember ChangeMemberType = iota
@@ -389,7 +397,23 @@ func addMemberIdsToChanges(client *goapi.GrafanaHTTPAPI, changes []MemberChange)
 		id, ok := gUserMap[change.Member.Email]
 		if !ok {
 			if change.Type == AddMember {
-				return nil, fmt.Errorf("error adding user %s. User does not exist in Grafana", change.Member.Email)
+				// return nil, fmt.Errorf("error adding user %s. User does not exist in Grafana", change.Member.Email)
+				resp, err := client.Org.AddOrgUserToCurrentOrg(&models.AddOrgUserCommand{LoginOrEmail: change.Member.Email, Role: "None"})
+				if err != nil {
+					log.Printf("[DEBUG] Failed to add user %s to current Org. User does not exist in Grafana", change.Member.Email)
+					return nil, fmt.Errorf("error adding user %s. User does not exist in Grafana", change.Member.Email)
+				} else {
+					var body RespBodyAddUserToOrg
+					if err := swag.ReadJSON([]byte(resp.String()), &body); err != nil {
+						return nil, fmt.Errorf("error parsing response from AddOrgUserToCurrentOrg: %w", err)
+					}
+					// err = json.Unmarshal([]byte(resp.String()), &body)
+					id, err = strconv.ParseInt(body.UserId, 10, 64)
+					if err != nil {
+						return nil, fmt.Errorf("error converting UserID to int64: %w", err)
+					}
+					continue
+				}
 			} else {
 				log.Printf("[DEBUG] Skipping removal of user %s. User does not exist in Grafana", change.Member.Email)
 				continue
