@@ -398,7 +398,20 @@ func addMemberIdsToChanges(client *goapi.GrafanaHTTPAPI, changes []MemberChange)
 		id, ok := gUserMap[change.Member.Email]
 		if !ok {
 			if change.Type == AddMember {
-				return nil, fmt.Errorf("error adding user %s. User does not exist in Grafana", change.Member.Email)
+				// return nil, fmt.Errorf("error adding user %s. User does not exist in Grafana", change.Member.Email)
+				_, err := client.Org.AddOrgUserToCurrentOrg(&models.AddOrgUserCommand{LoginOrEmail: change.Member.Email, Role: "None"})
+				if err != nil {
+					log.Printf("[DEBUG] Failed to add user %s to current Org. User does not exist in Grafana", change.Member.Email)
+					return nil, fmt.Errorf("error adding user %s. User does not exist in Grafana", change.Member.Email)
+				} else {
+					log.Printf("[DEBUG] Added new user %s to current Org", change.Member.Email)
+					resp, err := client.Users.GetUserByLoginOrEmail(change.Member.Email)
+					if err != nil {
+						return nil, fmt.Errorf("error getting new added user id: %w", err)
+					} else {
+						id = resp.Payload.ID
+					}
+				}
 			} else {
 				log.Printf("[DEBUG] Skipping removal of user %s. User does not exist in Grafana", change.Member.Email)
 				continue
